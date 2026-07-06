@@ -294,15 +294,30 @@
         const uploaderLine = cloudMode && uploader
           ? `<div class="car-uploader">🧑‍💼 ${escapeHtml(userLabel(uploader))}</div>`
           : "";
+        const photos = photosMap[c.id] || [];
+        const firstPhoto = photos[0];
+        let thumbHtml;
+        if (firstPhoto) {
+          thumbHtml = `<img class="car-thumb" src="${firstPhoto}" data-thumb="${c.id}" alt="車輛照片" title="點擊看大圖" />`;
+        } else if (num(c.photoCount) > 0) {
+          thumbHtml = `<div class="car-thumb car-thumb-ph">📷</div>`;
+        } else {
+          thumbHtml = `<div class="car-thumb car-thumb-ph">🚗</div>`;
+        }
         return `
         <tr>
           <td>${statusBadge(c.status)}</td>
           <td>
-            <div class="car-name">${escapeHtml(c.brand)} ${escapeHtml(c.model)}</div>
-            <div class="car-sub">${escapeHtml(c.plate || "")}</div>
-            ${clientLine}
-            ${uploaderLine}
-            ${photoBadge}
+            <div class="car-cell">
+              ${thumbHtml}
+              <div class="car-cell-info">
+                <div class="car-name">${escapeHtml(c.brand)} ${escapeHtml(c.model)}</div>
+                <div class="car-sub">${escapeHtml(c.plate || "")}</div>
+                ${clientLine}
+                ${uploaderLine}
+                ${photoBadge}
+              </div>
+            </div>
           </td>
           <td>${c.year ? escapeHtml(c.year) : "-"}</td>
           <td>${escapeHtml(c.color || "-")}</td>
@@ -322,6 +337,22 @@
         </tr>`;
       })
       .join("");
+
+    lazyLoadThumbs();
+  }
+
+  // 雲端模式：對有照片但尚未載入的車，非同步抓第一張縮圖並快取（只抓一次）
+  const thumbLoadAttempted = new Set();
+  function lazyLoadThumbs() {
+    if (!cloudMode || !cloudReady) return;
+    const need = cars.filter(
+      (c) => num(c.photoCount) > 0 && !photosMap[c.id] && !thumbLoadAttempted.has(c.id)
+    );
+    if (!need.length) return;
+    need.forEach((c) => thumbLoadAttempted.add(c.id));
+    Promise.all(need.map((c) => loadPhotosForCar(c.id))).then(() => {
+      renderTable();
+    });
   }
 
   function renderAll() {
@@ -766,11 +797,15 @@
     tableBody.addEventListener("click", (e) => {
       const editBtn = e.target.closest("[data-edit]");
       const delBtn = e.target.closest("[data-delete]");
+      const thumb = e.target.closest("[data-thumb]");
       if (editBtn) {
         const car = cars.find((c) => c.id === editBtn.dataset.edit);
         if (car) openModal(car);
       } else if (delBtn) {
         askDelete(delBtn.dataset.delete);
+      } else if (thumb) {
+        const photos = photosMap[thumb.dataset.thumb] || [];
+        if (photos[0]) openLightbox(photos[0]);
       }
     });
 
