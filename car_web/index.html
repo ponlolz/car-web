@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>中古車買賣管理系統</title>
+  <meta name="description" content="記錄與統計中古車買賣資訊：車型年份、顏色、廠牌、進價、整備費用、訂金、成交價與利潤。" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚗</text></svg>" />
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="container header-inner">
+      <h1 class="app-title">🚗 中古車買賣管理系統</h1>
+      <div class="header-actions">
+        <span id="modeBadge" class="mode-badge"></span>
+        <button id="btnExportCsv" class="btn btn-ghost" title="匯出成 Excel 可開啟的 CSV 檔">⬇️ 匯出 CSV</button>
+        <button id="btnBackup" class="btn btn-ghost" title="備份所有資料成 JSON 檔">💾 備份</button>
+        <button id="btnRestore" class="btn btn-ghost" title="從 JSON 備份檔還原資料">📂 還原</button>
+        <button id="btnLogout" class="btn btn-ghost" title="登出雲端帳號" hidden>🚪 登出</button>
+        <input type="file" id="restoreFile" accept="application/json,.json" hidden />
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- 統計儀表板 -->
+    <section class="dashboard" aria-label="統計儀表板">
+      <div class="stat-card">
+        <div class="stat-label">總車輛數</div>
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-sub"><span id="statInStock">0</span> 庫存 / <span id="statSold">0</span> 已售</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">總成本（進價＋整備＋其他）</div>
+        <div class="stat-value" id="statCost">$0</div>
+        <div class="stat-sub">含庫存與已售出</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">已售出總營收</div>
+        <div class="stat-value" id="statRevenue">$0</div>
+        <div class="stat-sub">成交價加總</div>
+      </div>
+      <div class="stat-card highlight">
+        <div class="stat-label">已實現總利潤</div>
+        <div class="stat-value" id="statProfit">$0</div>
+        <div class="stat-sub">平均每台 <span id="statAvgProfit">$0</span></div>
+      </div>
+    </section>
+
+    <!-- 工具列：搜尋 / 篩選 / 排序 / 新增 -->
+    <section class="toolbar">
+      <div class="toolbar-left">
+        <input type="search" id="searchInput" class="input" placeholder="🔍 搜尋廠牌、車型、顏色、車號、備註…" />
+        <select id="filterStatus" class="input">
+          <option value="">全部狀態</option>
+          <option value="庫存中">庫存中</option>
+          <option value="已收訂">已收訂</option>
+          <option value="已售出">已售出</option>
+        </select>
+        <select id="sortSelect" class="input" title="排序方式">
+          <option value="updatedAt-desc">最近更新</option>
+          <option value="createdAt-desc">最近新增</option>
+          <option value="profit-desc">利潤高→低</option>
+          <option value="profit-asc">利潤低→高</option>
+          <option value="salePrice-desc">成交價高→低</option>
+          <option value="year-desc">年份新→舊</option>
+          <option value="year-asc">年份舊→新</option>
+        </select>
+      </div>
+      <div class="toolbar-right">
+        <button id="btnAdd" class="btn btn-primary">➕ 新增車輛</button>
+      </div>
+    </section>
+
+    <!-- 車輛列表 -->
+    <section class="table-wrap">
+      <table class="car-table" id="carTable">
+        <thead>
+          <tr>
+            <th>狀態</th>
+            <th>廠牌 / 車型</th>
+            <th>年份</th>
+            <th>顏色</th>
+            <th class="num">里程(km)</th>
+            <th class="num">進價</th>
+            <th class="num">整備</th>
+            <th class="num">其他</th>
+            <th class="num">訂金</th>
+            <th class="num">成交價</th>
+            <th class="num">利潤</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="carTableBody"><!-- 由 JS 動態產生 --></tbody>
+      </table>
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="empty-emoji">📭</div>
+        <p>目前沒有符合條件的車輛資料</p>
+        <button class="btn btn-primary" id="btnAddEmpty">➕ 新增第一台車</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 新增 / 編輯 車輛的彈出視窗 -->
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <h2 id="modalTitle">新增車輛</h2>
+        <button class="modal-close" id="modalClose" aria-label="關閉">✕</button>
+      </div>
+      <form id="carForm" class="modal-body">
+        <input type="hidden" id="carId" />
+
+        <fieldset class="form-section">
+          <legend>基本資料</legend>
+          <div class="form-grid">
+            <label class="field">
+              <span>狀態</span>
+              <select id="fStatus" class="input">
+                <option value="庫存中">庫存中</option>
+                <option value="已收訂">已收訂</option>
+                <option value="已售出">已售出</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>廠牌 <em>*</em></span>
+              <input type="text" id="fBrand" class="input" placeholder="例：Toyota" required />
+            </label>
+            <label class="field">
+              <span>車型 <em>*</em></span>
+              <input type="text" id="fModel" class="input" placeholder="例：Altis" required />
+            </label>
+            <label class="field">
+              <span>年份</span>
+              <input type="number" id="fYear" class="input" placeholder="例：2018" min="1950" max="2100" />
+            </label>
+            <label class="field">
+              <span>顏色</span>
+              <input type="text" id="fColor" class="input" placeholder="例：珍珠白" />
+            </label>
+            <label class="field">
+              <span>車號 / 車牌</span>
+              <input type="text" id="fPlate" class="input" placeholder="例：ABC-1234" />
+            </label>
+            <label class="field">
+              <span>里程數 (km)</span>
+              <input type="number" id="fMileage" class="input" placeholder="例：85000" min="0" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>金額（自動計算利潤）</legend>
+          <div class="form-grid">
+            <label class="field">
+              <span>進價 / 收購價</span>
+              <input type="number" id="fPurchasePrice" class="input money" placeholder="0" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>整備費用</span>
+              <input type="number" id="fRepairCost" class="input money" placeholder="0" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>其他費用</span>
+              <input type="number" id="fOtherCost" class="input money" placeholder="0" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>訂金</span>
+              <input type="number" id="fDeposit" class="input money" placeholder="0" min="0" step="1" />
+            </label>
+            <label class="field">
+              <span>成交價 / 售價</span>
+              <input type="number" id="fSalePrice" class="input money" placeholder="0" min="0" step="1" />
+            </label>
+            <div class="field profit-preview">
+              <span>預估利潤</span>
+              <div id="profitPreview" class="profit-box">$0</div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>車主 / 客戶資料</legend>
+          <div class="form-grid">
+            <label class="field">
+              <span>賣方姓名（原車主）</span>
+              <input type="text" id="fSellerName" class="input" placeholder="例：陳先生" />
+            </label>
+            <label class="field">
+              <span>賣方電話</span>
+              <input type="tel" id="fSellerPhone" class="input" placeholder="例：0912-345-678" />
+            </label>
+            <label class="field">
+              <span>賣方地址 / 身分證</span>
+              <input type="text" id="fSellerAddress" class="input" placeholder="過戶用資料（選填）" />
+            </label>
+            <label class="field">
+              <span>買方姓名（成交客戶）</span>
+              <input type="text" id="fBuyerName" class="input" placeholder="例：王小姐" />
+            </label>
+            <label class="field">
+              <span>買方電話</span>
+              <input type="tel" id="fBuyerPhone" class="input" placeholder="例：0987-654-321" />
+            </label>
+            <label class="field">
+              <span>買方地址 / 身分證</span>
+              <input type="text" id="fBuyerAddress" class="input" placeholder="過戶用資料（選填）" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend>日期與備註</legend>
+          <div class="form-grid">
+            <label class="field">
+              <span>進貨日期</span>
+              <input type="date" id="fPurchaseDate" class="input" />
+            </label>
+            <label class="field">
+              <span>售出日期</span>
+              <input type="date" id="fSaleDate" class="input" />
+            </label>
+            <label class="field full">
+              <span>備註</span>
+              <textarea id="fNotes" class="input" rows="3" placeholder="例：原鈑件、有保養紀錄、需更換輪胎…"></textarea>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btnCancel">取消</button>
+          <button type="submit" class="btn btn-primary" id="btnSave">儲存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 刪除確認 -->
+  <div class="modal-overlay" id="confirmOverlay" hidden>
+    <div class="modal modal-sm" role="alertdialog" aria-modal="true">
+      <div class="modal-header">
+        <h2>確認刪除</h2>
+      </div>
+      <div class="modal-body">
+        <p id="confirmText">確定要刪除這筆資料嗎？此動作無法復原。</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="confirmCancel">取消</button>
+        <button class="btn btn-danger" id="confirmOk">刪除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 雲端登入畫面 -->
+  <div class="login-overlay" id="loginOverlay" hidden>
+    <form class="login-box" id="loginForm">
+      <div class="login-logo">🚗</div>
+      <h2>中古車買賣管理系統</h2>
+      <p class="login-sub">請登入以同步你的雲端資料</p>
+      <label class="field">
+        <span>帳號 (Email)</span>
+        <input type="email" id="loginEmail" class="input" autocomplete="username" placeholder="you@example.com" />
+      </label>
+      <label class="field">
+        <span>密碼</span>
+        <input type="password" id="loginPassword" class="input" autocomplete="current-password" placeholder="••••••••" />
+      </label>
+      <div class="login-error" id="loginError"></div>
+      <button type="submit" class="btn btn-primary login-btn" id="loginBtn">登入</button>
+      <p class="login-hint">帳號需先在 Firebase 後台建立（詳見 README 設定教學）</p>
+    </form>
+  </div>
+
+  <!-- 提示訊息 -->
+  <div id="toast" class="toast" hidden></div>
+
+  <footer class="app-footer">
+    <div class="container">
+      <p>資料僅儲存在此裝置的瀏覽器中，請定期使用「💾 備份」功能保存資料。</p>
+    </div>
+  </footer>
+
+  <!-- Firebase SDK（雲端同步用；未設定時自動使用本機模式）-->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="js/firebase-config.js"></script>
+  <script src="js/app.js"></script>
+</body>
+
+</html>
