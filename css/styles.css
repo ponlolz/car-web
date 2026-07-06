@@ -307,6 +307,28 @@ textarea.input {
   margin-top: 3px;
 }
 
+.car-uploader {
+  display: inline-block;
+  font-size: 0.72rem;
+  color: #475569;
+  background: #f1f5f9;
+  padding: 1px 8px;
+  border-radius: 999px;
+  margin-top: 3px;
+  margin-right: 4px;
+}
+
+.record-meta {
+  font-size: 0.76rem;
+  color: var(--color-text-muted);
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin: 0 22px 4px;
+  line-height: 1.7;
+}
+
 .profit-cell {
   font-weight: 700;
 }

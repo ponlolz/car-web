@@ -15,6 +15,7 @@
   const cloudMode = !!(cfg.apiKey && cfg.projectId);
   let db = null, auth = null, docRef = null, unsub = null;
   let cloudReady = false;
+  let currentUserEmail = ""; // 目前登入者（雲端模式），用於記錄上傳/修改者
 
   if (cloudMode) {
     try {
@@ -50,6 +51,9 @@
    * @property {string} buyerPhone    買方電話
    * @property {string} buyerAddress  買方地址/身分證
    * @property {string} notes         備註
+   * @property {number} photoCount    照片數量
+   * @property {string} createdBy      建立者 email
+   * @property {string} updatedBy      最後修改者 email
    * @property {number} createdAt
    * @property {number} updatedAt
    */
@@ -147,6 +151,18 @@
   function formatNumber(n) {
     if (n === null || n === undefined || n === "") return "-";
     return num(n).toLocaleString("en-US");
+  }
+
+  function userLabel(email) {
+    if (!email) return "";
+    return String(email).split("@")[0];
+  }
+
+  function formatDateTime(ts) {
+    if (!ts) return "";
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
   function escapeHtml(str) {
@@ -274,6 +290,10 @@
         const photoBadge = num(c.photoCount) > 0
           ? `<span class="photo-count">📷 ${num(c.photoCount)}</span>`
           : "";
+        const uploader = c.createdBy || c.updatedBy;
+        const uploaderLine = cloudMode && uploader
+          ? `<div class="car-uploader">🧑‍💼 ${escapeHtml(userLabel(uploader))}</div>`
+          : "";
         return `
         <tr>
           <td>${statusBadge(c.status)}</td>
@@ -281,6 +301,7 @@
             <div class="car-name">${escapeHtml(c.brand)} ${escapeHtml(c.model)}</div>
             <div class="car-sub">${escapeHtml(c.plate || "")}</div>
             ${clientLine}
+            ${uploaderLine}
             ${photoBadge}
           </td>
           <td>${c.year ? escapeHtml(c.year) : "-"}</td>
@@ -343,6 +364,7 @@
       $("fStatus").value = "庫存中";
     }
     renderPhotoPreviews();
+    updateRecordMeta(car);
     updateProfitPreview();
     modalOverlay.hidden = false;
     setTimeout(() => $("fBrand").focus(), 50);
@@ -359,6 +381,29 @@
 
   function closeModal() {
     modalOverlay.hidden = true;
+  }
+
+  function updateRecordMeta(car) {
+    const box = $("recordMeta");
+    if (!box) return;
+    if (!cloudMode) {
+      box.textContent = "";
+      box.hidden = true;
+      return;
+    }
+    const parts = [];
+    if (car && (car.createdBy || car.createdAt)) {
+      const who = car.createdBy ? userLabel(car.createdBy) : "不明";
+      parts.push(`📝 由 ${who} 建立於 ${formatDateTime(car.createdAt)}`);
+    }
+    if (car && car.updatedBy && (car.updatedBy !== car.createdBy || car.updatedAt !== car.createdAt)) {
+      parts.push(`✏️ 最後由 ${userLabel(car.updatedBy)} 修改於 ${formatDateTime(car.updatedAt)}`);
+    }
+    if (!car) {
+      parts.push(`👤 將以 ${userLabel(currentUserEmail) || "目前帳號"} 身分建立`);
+    }
+    box.innerHTML = parts.join("<br>");
+    box.hidden = parts.length === 0;
   }
 
   function updateProfitPreview() {
@@ -411,12 +456,15 @@
     if (id) {
       const idx = cars.findIndex((c) => c.id === id);
       if (idx !== -1) {
-        cars[idx] = Object.assign({}, cars[idx], data, { updatedAt: now });
+        cars[idx] = Object.assign({}, cars[idx], data, { updatedAt: now, updatedBy: currentUserEmail });
       }
       savedId = id;
       showToast("已更新車輛資料", "success");
     } else {
-      const newCar = Object.assign({ id: uid(), createdAt: now, updatedAt: now }, data);
+      const newCar = Object.assign(
+        { id: uid(), createdAt: now, updatedAt: now, createdBy: currentUserEmail, updatedBy: currentUserEmail },
+        data
+      );
       cars.push(newCar);
       savedId = newCar.id;
       showToast("已新增車輛", "success");
@@ -576,7 +624,7 @@
       "進貨日期", "售出日期",
       "賣方姓名", "賣方電話", "賣方地址",
       "買方姓名", "買方電話", "買方地址",
-      "備註",
+      "備註", "建立者", "最後修改者",
     ];
     const rows = cars.map((c) => [
       c.status, c.brand, c.model, c.year || "", c.color, c.plate, c.mileage || "",
@@ -584,7 +632,7 @@
       num(c.salePrice), calcProfit(c), c.purchaseDate, c.saleDate,
       c.sellerName || "", c.sellerPhone || "", c.sellerAddress || "",
       c.buyerName || "", c.buyerPhone || "", c.buyerAddress || "",
-      c.notes,
+      c.notes, c.createdBy || "", c.updatedBy || "",
     ]);
 
     const csvContent = [headers, ...rows]
@@ -888,11 +936,13 @@
     auth.onAuthStateChanged((user) => {
       if (user) {
         cloudReady = true;
+        currentUserEmail = user.email || "";
         hideLogin();
         updateModeBadge("cloud", user.email);
         subscribeCloud();
       } else {
         cloudReady = false;
+        currentUserEmail = "";
         if (unsub) {
           unsub();
           unsub = null;
