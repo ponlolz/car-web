@@ -34,6 +34,7 @@
    * @property {string} brand         廠牌
    * @property {string} model         車型
    * @property {number|null} year     年份
+   * @property {number|null} month    出廠月份
    * @property {string} color         顏色
    * @property {string} plate         車號
    * @property {number|null} mileage  里程數
@@ -319,7 +320,7 @@
               </div>
             </div>
           </td>
-          <td>${c.year ? escapeHtml(c.year) : "-"}</td>
+          <td>${c.year ? escapeHtml(c.year) + (c.month ? "/" + escapeHtml(c.month) : "") : "-"}</td>
           <td>${escapeHtml(c.color || "-")}</td>
           <td class="num">${formatNumber(c.mileage)}</td>
           <td class="num">${formatMoney(c.purchasePrice)}</td>
@@ -372,6 +373,7 @@
       $("fBrand").value = car.brand || "";
       $("fModel").value = car.model || "";
       $("fYear").value = car.year || "";
+      $("fMonth").value = car.month || "";
       $("fColor").value = car.color || "";
       $("fPlate").value = car.plate || "";
       $("fMileage").value = car.mileage || "";
@@ -458,6 +460,7 @@
       brand: $("fBrand").value.trim(),
       model: $("fModel").value.trim(),
       year: $("fYear").value ? num($("fYear").value) : null,
+      month: $("fMonth").value ? num($("fMonth").value) : null,
       color: $("fColor").value.trim(),
       plate: $("fPlate").value.trim(),
       mileage: $("fMileage").value ? num($("fMileage").value) : null,
@@ -650,7 +653,7 @@
       return;
     }
     const headers = [
-      "狀態", "廠牌", "車型", "年份", "顏色", "車號", "里程數",
+      "狀態", "廠牌", "車型", "年份", "月份", "顏色", "車號", "里程數",
       "進價", "整備費用", "其他費用", "訂金", "成交價", "利潤",
       "進貨日期", "售出日期",
       "賣方姓名", "賣方電話", "賣方地址",
@@ -658,7 +661,7 @@
       "備註", "建立者", "最後修改者",
     ];
     const rows = cars.map((c) => [
-      c.status, c.brand, c.model, c.year || "", c.color, c.plate, c.mileage || "",
+      c.status, c.brand, c.model, c.year || "", c.month || "", c.color, c.plate, c.mileage || "",
       num(c.purchasePrice), num(c.repairCost), num(c.otherCost), num(c.deposit),
       num(c.salePrice), calcProfit(c), c.purchaseDate, c.saleDate,
       c.sellerName || "", c.sellerPhone || "", c.sellerAddress || "",
